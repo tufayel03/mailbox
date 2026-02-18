@@ -1,5 +1,31 @@
 # Run Commands
 
+## CloudPanel deploy path (your site)
+
+Use this exact path for your Node.js site user:
+
+```bash
+cd /home/mailbox/htdocs/mailbox.bidnsteal.com
+```
+
+## CloudPanel deploy commands (no Docker)
+
+```bash
+cd /home/mailbox/htdocs/mailbox.bidnsteal.com
+mkdir -p app
+cd app
+git clone https://github.com/tufayel03/mailbox.git
+cd mailbox/mail-platform/panel
+cp .env.example .env
+npm ci --omit=dev
+npm run db:init
+```
+
+CloudPanel Node.js app settings:
+- App root: `/home/mailbox/htdocs/mailbox.bidnsteal.com/app/mailbox/mail-platform/panel`
+- App port: `3101`
+- Start command: `npm start`
+
 ## Production VPS bootstrap (recommended)
 
 ```bash
@@ -36,7 +62,7 @@ sudo ./setup-mailserver.sh --hostname mail.mailhost.com --install-panel-service 
 sudo systemctl status mail-platform-panel --no-pager
 sudo systemctl restart mail-platform-panel
 sudo journalctl -u mail-platform-panel -f
-curl -fsS http://127.0.0.1:3001/healthz
+curl -fsS http://127.0.0.1:3101/healthz
 ```
 
 ## Manual panel setup (if service install skipped)
@@ -63,13 +89,13 @@ sudo ./install-panel-service.sh
 Panel bind is local-only by default:
 
 ```text
-http://127.0.0.1:3001
+http://127.0.0.1:3101
 ```
 
 SSH tunnel from your workstation:
 
 ```bash
-ssh -L 3001:127.0.0.1:3001 user@your-server
+ssh -L 3101:127.0.0.1:3101 user@your-server
 ```
 
 ## Core service checks

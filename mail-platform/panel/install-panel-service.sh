@@ -191,6 +191,10 @@ enable_service() {
 }
 
 print_summary() {
+  local panel_host panel_port
+  panel_host="$(grep '^PANEL_HOST=' "$PANEL_DIR/.env" | cut -d= -f2)"
+  panel_port="$(grep '^PANEL_PORT=' "$PANEL_DIR/.env" | cut -d= -f2)"
+
   cat <<EOF
 
 Panel service installed.
@@ -200,10 +204,10 @@ Service:
   journalctl -u $SERVICE_NAME -f
 
 Panel bind address:
-  $(grep '^PANEL_HOST=' "$PANEL_DIR/.env" | cut -d= -f2):$(grep '^PANEL_PORT=' "$PANEL_DIR/.env" | cut -d= -f2)
+  $panel_host:$panel_port
 
 If you use SSH tunnel:
-  ssh -L 3001:127.0.0.1:3001 user@server
+  ssh -L ${panel_port}:127.0.0.1:${panel_port} user@server
 
 EOF
 }

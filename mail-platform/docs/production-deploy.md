@@ -28,7 +28,7 @@ sudo systemctl status mail-platform-panel --no-pager
 ## 3) Verify panel health
 
 ```bash
-curl -fsS http://127.0.0.1:3001/healthz
+curl -fsS http://127.0.0.1:3101/healthz
 ```
 
 Expected output:
@@ -42,13 +42,13 @@ Expected output:
 On your local machine:
 
 ```bash
-ssh -L 3001:127.0.0.1:3001 user@your-vps-ip
+ssh -L 3101:127.0.0.1:3101 user@your-vps-ip
 ```
 
 Open:
 
 ```text
-http://127.0.0.1:3001/login
+http://127.0.0.1:3101/login
 ```
 
 ## 5) Locate generated admin password (if auto-generated)

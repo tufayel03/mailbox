@@ -2,7 +2,7 @@
 
 ## Add first domain
 
-1. Login to panel at `http://127.0.0.1:3001`.
+1. Login to panel at `http://127.0.0.1:3101`.
 2. Open **Domains**.
 3. Add domain (example: `domain1.com`).
 4. Click **DNS JSON** and publish records at your DNS provider.

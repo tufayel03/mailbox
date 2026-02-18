@@ -20,7 +20,7 @@ PANEL_DB_PASS=""
 PANEL_DB_HOST="127.0.0.1"
 PANEL_DB_PORT="5432"
 PANEL_BIND_HOST="127.0.0.1"
-PANEL_BIND_PORT="3001"
+PANEL_BIND_PORT="3101"
 
 MAIL_UID="5000"
 MAIL_GID="5000"
@@ -56,7 +56,7 @@ Options:
   --db-user <user>                PostgreSQL DB user (default: mailpanel)
   --db-pass <password>            PostgreSQL DB password (default: random generated)
   --panel-host <ip>               Panel bind host (default: 127.0.0.1)
-  --panel-port <port>             Panel bind port (default: 3001)
+  --panel-port <port>             Panel bind port (default: 3101)
 
 Compatibility no-op flags:
   --mailcow-dir <path>            Ignored in native mode
