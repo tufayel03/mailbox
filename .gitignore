@@ -27,3 +27,4 @@ dist-ssr
 mail-platform/panel/.env
 mail-platform/panel/.runtime/
 mail-platform/local-postgres/
+mail-platform/docs/cloudpanel-credentials.local.md

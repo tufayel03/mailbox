@@ -66,6 +66,13 @@ What the setup script configures:
 
 ## 2) Panel Setup and Run
 
+CloudPanel Node.js site values (your current setup):
+- Domain: `mailbox.bidnsteal.com`
+- Node.js: `Node 22 LTS`
+- App port: `3101`
+- Site user: `mailbox`
+- Site password: keep only in local ignored credential file (`docs/cloudpanel-credentials.local.md`)
+
 Production (recommended):
 
 ```bash

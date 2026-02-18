@@ -26,3 +26,11 @@ This repository contains a private multi-domain email platform with a native Ubu
    - `Domains -> Add Domain -> DNS JSON -> publish DNS -> Check DNS`
 5. Create mailbox:
    - `Mailboxes -> Create Mailbox`
+
+## CloudPanel Node.js Site (Current)
+
+- Domain: `mailbox.bidnsteal.com`
+- Node.js: `Node 22 LTS`
+- App Port: `3101`
+- Site User: `mailbox`
+- Site password: saved in local file `mail-platform/docs/cloudpanel-credentials.local.md` (gitignored)
