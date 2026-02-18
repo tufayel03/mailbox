@@ -1,0 +1,10 @@
+<%- include('partials/header', { pageTitle, currentUser, flash }) %>
+<section class="auth-card">
+  <div class="auth-head">
+    <i data-lucide="server-crash"></i>
+    <h1 class="auth-title">Server Error</h1>
+  </div>
+  <p class="auth-sub"><%= errorMessage || 'Unexpected server error' %></p>
+  <p><a class="back-link" href="/domains">Back to dashboard</a></p>
+</section>
+<%- include('partials/footer') %>

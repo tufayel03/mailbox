@@ -1,0 +1,108 @@
+<%- include('partials/header', { pageTitle, currentUser, flash }) %>
+
+<section class="panel-grid security-grid">
+  <article class="panel-card">
+    <div class="card-head">
+      <div>
+        <h1 class="section-title">Rate Events</h1>
+        <p class="muted">Recent outbound abuse/rate-limit signals captured by the worker.</p>
+      </div>
+      <form method="post" action="/security/check-now" class="inline-form">
+        <button class="btn primary" type="submit"><i data-lucide="scan-search"></i><span>Run Check</span></button>
+      </form>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>User</th>
+            <th>Bucket</th>
+            <th>Source</th>
+            <th>Warned</th>
+            <th>Disabled</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!events || events.length === 0) { %>
+            <tr><td colspan="6">No events yet.</td></tr>
+          <% } %>
+          <% events.forEach((event) => { %>
+            <tr>
+              <td><%= new Date(event.event_time).toISOString() %></td>
+              <td><%= event.user_email %></td>
+              <td><%= event.bucket_name %></td>
+              <td><%= event.source %></td>
+              <td><%= event.warned_at ? 'yes' : 'no' %></td>
+              <td><%= event.disabled_at ? 'yes' : 'no' %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article class="panel-card">
+    <div class="card-head">
+      <div>
+        <h2 class="sub-title">Mailbox State</h2>
+        <p class="muted">Current warning/disable state per mailbox identity.</p>
+      </div>
+      <span class="badge-pill"><i data-lucide="activity"></i><%= mailboxStates ? mailboxStates.length : 0 %> tracked</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Warn Count</th>
+            <th>Last Warn</th>
+            <th>Disabled At</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!mailboxStates || mailboxStates.length === 0) { %>
+            <tr><td colspan="5">No mailbox state data.</td></tr>
+          <% } %>
+          <% mailboxStates.forEach((state) => { %>
+            <tr>
+              <td><%= state.email %></td>
+              <td><%= state.status %></td>
+              <td><%= state.warn_count %></td>
+              <td><%= state.last_warn_at ? new Date(state.last_warn_at).toISOString() : '-' %></td>
+              <td><%= state.disabled_at ? new Date(state.disabled_at).toISOString() : '-' %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel-subcard">
+      <div class="card-head">
+        <div>
+          <h3 class="result-title">Admin Password</h3>
+          <p class="result-note">Change login password for <%= currentUser.username %>.</p>
+        </div>
+      </div>
+      <form method="post" action="/security/admin-password" class="stacked-form">
+        <label>Current Password
+          <input type="password" name="currentPassword" minlength="8" required />
+        </label>
+        <label>New Password
+          <input type="password" name="newPassword" minlength="8" required />
+        </label>
+        <label>Confirm New Password
+          <input type="password" name="confirmPassword" minlength="8" required />
+        </label>
+        <button class="btn primary" type="submit">
+          <i data-lucide="key-round"></i><span>Update Password</span>
+        </button>
+      </form>
+    </div>
+  </article>
+</section>
+
+<%- include('partials/footer') %>

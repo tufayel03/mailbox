@@ -1,0 +1,227 @@
+<%- include('partials/header', { pageTitle, currentUser, flash }) %>
+
+<%
+  const domainRows = Array.isArray(domains) ? domains : [];
+  const activeCount = domainRows.filter((item) => item.status === 'active').length;
+  const remoteOn = domainRows.filter((item) => item.remoteActive === true).length;
+%>
+
+<section class="panel-grid domains-grid domains-page-tight">
+  <article class="panel-card">
+    <div class="card-head">
+      <div>
+        <h1 class="section-title">Domain Command</h1>
+        <p class="muted">Manage sender domains, visibility, and DNS health from one dashboard.</p>
+      </div>
+      <span class="badge-pill"><i data-lucide="layers-3"></i><%= domainRows.length %> domains</span>
+    </div>
+
+    <div class="stats-strip three">
+      <div class="stat-block">
+        <span class="stat-label">Managed</span>
+        <span class="stat-value info"><%= domainRows.length %></span>
+      </div>
+      <div class="stat-block">
+        <span class="stat-label">Active</span>
+        <span class="stat-value ok"><%= activeCount %></span>
+      </div>
+      <div class="stat-block">
+        <span class="stat-label">Remote ON</span>
+        <span class="stat-value warn"><%= remoteOn %></span>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data-table domains-table">
+        <thead>
+          <tr>
+            <th>Domain</th>
+            <th>Status</th>
+            <th>Remote</th>
+            <th>Mailboxes</th>
+            <th class="actions-col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (domainRows.length === 0) { %>
+            <tr><td colspan="5">No domains managed yet.</td></tr>
+          <% } %>
+          <% domainRows.forEach((domain) => { %>
+            <tr>
+              <td><%= domain.domain_name %></td>
+              <td><%= domain.status %></td>
+              <td><%= domain.remoteActive === null ? 'unknown' : (domain.remoteActive ? 'yes' : 'no') %></td>
+              <td><%= domain.remoteMailboxes === null ? '-' : domain.remoteMailboxes %></td>
+              <td class="actions-col">
+                <div class="action-row action-row-inline">
+                  <a class="btn mini" title="DNS JSON" aria-label="DNS JSON" href="/domains/<%= encodeURIComponent(domain.domain_name) %>/dns" target="_blank" rel="noopener">
+                    <i data-lucide="file-json-2"></i><span>DNS JSON</span>
+                  </a>
+                  <button class="btn mini ghost" title="Check DNS" aria-label="Check DNS" type="button" onclick="checkDns('<%= domain.domain_name %>')">
+                    <i data-lucide="search-check"></i><span>Check DNS</span>
+                  </button>
+                  <form method="post" action="/domains/<%= encodeURIComponent(domain.domain_name) %>/delete" class="inline-form" onsubmit="return confirm('Delete domain <%= domain.domain_name %>?');">
+                    <button class="btn mini danger" title="Delete" aria-label="Delete" type="submit">
+                      <i data-lucide="trash-2"></i><span>Delete</span>
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article class="panel-card">
+    <div class="card-head">
+      <div>
+        <h2 class="sub-title">Add Domain</h2>
+        <p class="muted">Create domain entry and fetch DNS records instantly.</p>
+      </div>
+      <span class="badge-pill"><i data-lucide="plus"></i>new</span>
+    </div>
+
+    <form method="post" action="/domains" class="stacked-form">
+      <label>Domain
+        <input type="text" name="domain" placeholder="example.com" required />
+      </label>
+      <label>Description
+        <input type="text" name="description" placeholder="Transactional domain" />
+      </label>
+      <button class="btn primary" type="submit">
+        <i data-lucide="plus-circle"></i><span>Add Domain</span>
+      </button>
+    </form>
+
+    <% if (dnsPreview) { %>
+      <div class="panel-subcard dns-preview">
+        <div class="dns-head">
+          <h3 class="result-title">DNS Records: <%= dnsPreview.domain %></h3>
+          <span class="badge-pill"><i data-lucide="list-checks"></i><%= dnsPreview.records.length %> records</span>
+        </div>
+        <div class="dns-record-list">
+          <% dnsPreview.records.forEach((record) => { 
+            const priorityText = record.priority === null || record.priority === undefined || String(record.priority).trim() === '' ? '-' : String(record.priority);
+          %>
+            <article class="dns-record">
+              <div class="dns-record-meta">
+                <span class="dns-type-tag"><%= record.type %></span>
+                <span class="dns-name-tag"><%= record.name %></span>
+                <span class="dns-priority-tag">prio <%= priorityText %></span>
+              </div>
+              <div class="dns-field">
+                <span class="dns-field-label">Value</span>
+                <pre class="dns-code"><%= record.value %></pre>
+              </div>
+            </article>
+          <% }) %>
+        </div>
+      </div>
+    <% } %>
+
+    <div id="dns-result" class="dns-result panel-subcard"></div>
+  </article>
+</section>
+
+<script>
+function escapeHtml(input) {
+  return String(input ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function normalizeObserved(observed) {
+  if (Array.isArray(observed)) {
+    if (observed.length === 0) return '-';
+    return observed.join('\n');
+  }
+
+  const value = String(observed ?? '').trim();
+  return value || '-';
+}
+
+function renderDnsRecord(record) {
+  const statusText = record.pass ? 'PASS' : 'FAIL';
+  const statusClass = record.pass ? 'dns-status-pass' : 'dns-status-fail';
+  const expected = String(record.value ?? '').trim() || '-';
+  const observed = normalizeObserved(record.observed);
+  const priority = record.priority === null || record.priority === undefined || String(record.priority).trim() === '' ? '-' : String(record.priority);
+
+  return `<article class="dns-record">
+    <div class="dns-record-meta">
+      <span class="dns-type-tag">${escapeHtml(record.type || '-')}</span>
+      <span class="dns-name-tag">${escapeHtml(record.name || '@')}</span>
+      <span class="dns-priority-tag">prio ${escapeHtml(priority)}</span>
+      <span class="dns-status-tag ${statusClass}">${statusText}</span>
+    </div>
+    <div class="dns-field-grid">
+      <div class="dns-field">
+        <span class="dns-field-label">Expected</span>
+        <pre class="dns-code">${escapeHtml(expected)}</pre>
+      </div>
+      <div class="dns-field">
+        <span class="dns-field-label">Observed</span>
+        <pre class="dns-code">${escapeHtml(observed)}</pre>
+      </div>
+    </div>
+  </article>`;
+}
+
+async function checkDns(domain) {
+  const box = document.getElementById('dns-result');
+  box.innerHTML = `<p class="result-note">Checking DNS for ${domain}...</p>`;
+
+  try {
+    const response = await fetch(`/domains/${encodeURIComponent(domain)}/dns-check`, { method: 'POST' });
+    const data = await response.json();
+
+    if (!response.ok) {
+      box.innerHTML = `<p class="text-danger">${escapeHtml(data.error || 'DNS check failed')}</p>`;
+      if (window.lucide) window.lucide.createIcons();
+      return;
+    }
+
+    const records = Array.isArray(data.records) ? data.records : [];
+
+    if (records.length === 0) {
+      box.innerHTML = `<div class="dns-head">
+        <h3 class="result-title">DNS Check: ${escapeHtml(data.domain || domain)}</h3>
+      </div>
+      <p class="result-note">No DNS records returned.</p>`;
+      if (window.lucide) window.lucide.createIcons();
+      return;
+    }
+
+    const passedCount = records.filter((record) => Boolean(record.pass)).length;
+    const failedCount = records.length - passedCount;
+    const summaryText = failedCount === 0
+      ? 'All records passed'
+      : `${failedCount} record${failedCount === 1 ? '' : 's'} failed`;
+    const summaryTone = failedCount === 0 ? 'pass' : 'fail';
+    const rows = records.map((record) => renderDnsRecord(record)).join('');
+
+    box.innerHTML = `<div class="dns-head">
+      <h3 class="result-title">DNS Check: ${escapeHtml(data.domain || domain)}</h3>
+      <div class="dns-summary">
+        <span class="dns-chip ${summaryTone}">${escapeHtml(summaryText)}</span>
+        <span class="dns-chip neutral">${passedCount} pass</span>
+        <span class="dns-chip neutral">${failedCount} fail</span>
+      </div>
+    </div>
+    <div class="dns-record-list">${rows}</div>`;
+  } catch (err) {
+    box.innerHTML = `<p class="text-danger">${escapeHtml(err.message)}</p>`;
+  }
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+}
+</script>
+
+<%- include('partials/footer') %>

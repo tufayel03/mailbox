@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title><%= pageTitle %> - Mail Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css?v=ref2-shell-11" />
+</head>
+<%
+  const sectionTitle = String(pageTitle || '').toLowerCase();
+  const sectionKey = sectionTitle.includes('mailbox') ? 'mailboxes' : sectionTitle.includes('security') ? 'security' : 'domains';
+%>
+<body class="<%= currentUser ? 'auth-on' : 'auth-off' %>">
+<% if (currentUser) { %>
+  <div class="viewport-bg">
+    <div class="app-shell">
+      <header class="shell-topbar">
+        <a class="brand-mark" href="/domains" aria-label="Mail Platform Home">
+          <span class="brand-logo">M</span>
+          <span class="brand-text">Mail Control</span>
+        </a>
+
+        <nav class="pill-nav-wrap" aria-label="Primary">
+          <a class="pill-nav <%= sectionKey === 'domains' ? 'active' : '' %>" href="/domains">
+            <i data-lucide="globe-2"></i><span>Domains</span>
+          </a>
+          <a class="pill-nav <%= sectionKey === 'mailboxes' ? 'active' : '' %>" href="/mailboxes">
+            <i data-lucide="inbox"></i><span>Mailboxes</span>
+          </a>
+          <a class="pill-nav <%= sectionKey === 'security' ? 'active' : '' %>" href="/security/events">
+            <i data-lucide="shield-check"></i><span>Security</span>
+          </a>
+          <a class="pill-nav" href="/domains">
+            <i data-lucide="search"></i><span>Lookup</span>
+          </a>
+        </nav>
+
+        <div class="topbar-right">
+          <div class="profile-chip">
+            <div class="profile-meta">
+              <strong><%= currentUser.username %></strong>
+              <small>Internal Admin</small>
+            </div>
+            <span class="avatar-dot"><i data-lucide="user-circle-2"></i></span>
+          </div>
+          <form method="post" action="/logout" class="inline-form">
+            <button type="submit" class="icon-circle" aria-label="Logout">
+              <i data-lucide="log-out"></i>
+            </button>
+          </form>
+        </div>
+      </header>
+
+      <div class="shell-body">
+        <aside class="icon-rail" aria-label="Quick Actions">
+          <a class="rail-item <%= sectionKey === 'domains' ? 'active' : '' %>" href="/domains" title="Domains"><i data-lucide="building-2"></i></a>
+          <a class="rail-item <%= sectionKey === 'mailboxes' ? 'active' : '' %>" href="/mailboxes" title="Mailboxes"><i data-lucide="mail"></i></a>
+          <a class="rail-item <%= sectionKey === 'security' ? 'active' : '' %>" href="/security/events" title="Security"><i data-lucide="shield-alert"></i></a>
+          <a class="rail-item" href="/domains" title="DNS"><i data-lucide="network"></i></a>
+          <a class="rail-item" href="/mailboxes" title="Settings"><i data-lucide="settings-2"></i></a>
+        </aside>
+
+        <main class="shell-main">
+          <% if (flash) { %>
+            <div class="flash flash-<%= flash.type %>">
+              <i data-lucide="<%= flash.type === 'success' ? 'check-circle-2' : flash.type === 'warning' ? 'alert-triangle' : 'octagon-alert' %>"></i>
+              <span><%= flash.message %></span>
+            </div>
+          <% } %>
+<% } else { %>
+  <div class="login-bg">
+    <main class="auth-main">
+      <% if (flash) { %>
+        <div class="flash flash-<%= flash.type %>">
+          <i data-lucide="<%= flash.type === 'success' ? 'check-circle-2' : flash.type === 'warning' ? 'alert-triangle' : 'octagon-alert' %>"></i>
+          <span><%= flash.message %></span>
+        </div>
+      <% } %>
+<% } %>

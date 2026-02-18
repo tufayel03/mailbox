@@ -1,0 +1,24 @@
+<%- include('partials/header', { pageTitle, currentUser, flash }) %>
+
+<section class="auth-card">
+  <div class="auth-head">
+    <i data-lucide="shield-user"></i>
+    <h1 class="auth-title">Admin Login</h1>
+  </div>
+  <p class="auth-sub">Private control panel for domains, mailboxes, and delivery safeguards.</p>
+
+  <form method="post" action="/login" class="stacked-form">
+    <label>Username
+      <input type="text" name="username" autocomplete="username" required />
+    </label>
+    <label>Password
+      <input type="password" name="password" autocomplete="current-password" required />
+    </label>
+    <button class="btn primary" type="submit">
+      <i data-lucide="log-in"></i>
+      <span>Login</span>
+    </button>
+  </form>
+</section>
+
+<%- include('partials/footer') %>
