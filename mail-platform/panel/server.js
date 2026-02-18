@@ -18,8 +18,10 @@ const createSecurityRoutes = require("./routes/security");
 const { RateLimitWorker } = require("./worker");
 
 const PANEL_HOST = process.env.PANEL_HOST || "127.0.0.1";
-const PANEL_PORT = parseInt(process.env.PANEL_PORT || "3001", 10);
+const PANEL_PORT = parseInt(process.env.PANEL_PORT || "3101", 10);
 const SESSION_SECRET = process.env.SESSION_SECRET || "change-me-session-secret";
+const NODE_ENV = String(process.env.NODE_ENV || "").toLowerCase();
+const IS_PRODUCTION = NODE_ENV === "production";
 
 function parseBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === "") {
@@ -35,10 +37,10 @@ async function bootstrap() {
 
   const trustProxyRaw = process.env.TRUST_PROXY;
   const trustProxy = trustProxyRaw === undefined || trustProxyRaw === ""
-    ? false
+    ? IS_PRODUCTION
     : (trustProxyRaw === "1" || trustProxyRaw.toLowerCase() === "true" ? true : trustProxyRaw);
 
-  const sessionCookieSecure = parseBoolean(process.env.SESSION_COOKIE_SECURE, false);
+  const sessionCookieSecure = parseBoolean(process.env.SESSION_COOKIE_SECURE, IS_PRODUCTION);
   const sessionCookieSameSite = process.env.SESSION_COOKIE_SAMESITE || "lax";
   const sessionCookieMaxAge = parseInt(process.env.SESSION_COOKIE_MAX_AGE_MS || String(1000 * 60 * 60 * 8), 10);
   const sessionCookieName = process.env.SESSION_COOKIE_NAME || "mailpanel.sid";
