@@ -21,10 +21,27 @@ const PANEL_HOST = process.env.PANEL_HOST || "127.0.0.1";
 const PANEL_PORT = parseInt(process.env.PANEL_PORT || "3001", 10);
 const SESSION_SECRET = process.env.SESSION_SECRET || "change-me-session-secret";
 
+function parseBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  return String(value).toLowerCase() === "true";
+}
+
 async function bootstrap() {
   if (!process.env.SESSION_SECRET || SESSION_SECRET === "change-me-session-secret") {
     throw new Error("SESSION_SECRET must be set to a strong random value");
   }
+
+  const trustProxyRaw = process.env.TRUST_PROXY;
+  const trustProxy = trustProxyRaw === undefined || trustProxyRaw === ""
+    ? false
+    : (trustProxyRaw === "1" || trustProxyRaw.toLowerCase() === "true" ? true : trustProxyRaw);
+
+  const sessionCookieSecure = parseBoolean(process.env.SESSION_COOKIE_SECURE, false);
+  const sessionCookieSameSite = process.env.SESSION_COOKIE_SAMESITE || "lax";
+  const sessionCookieMaxAge = parseInt(process.env.SESSION_COOKIE_MAX_AGE_MS || String(1000 * 60 * 60 * 8), 10);
+  const sessionCookieName = process.env.SESSION_COOKIE_NAME || "mailpanel.sid";
 
   const pool = createPool();
   await initDatabase(pool);
@@ -39,6 +56,7 @@ async function bootstrap() {
 
   const app = express();
   app.disable("x-powered-by");
+  app.set("trust proxy", trustProxy);
   app.set("view engine", "ejs");
   app.set("views", path.join(__dirname, "views"));
   app.set("view cache", (process.env.VIEW_CACHE || "false").toLowerCase() === "true");
@@ -54,19 +72,21 @@ async function bootstrap() {
   app.use(express.static(path.join(__dirname, "public"), { maxAge: staticMaxAge }));
 
   app.use(session({
+    name: sessionCookieName,
     store: new PgSession({
       pool,
       tableName: "user_sessions",
       createTableIfMissing: true
     }),
     secret: SESSION_SECRET,
+    proxy: Boolean(trustProxy),
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      sameSite: "lax",
-      secure: false,
-      maxAge: 1000 * 60 * 60 * 8
+      sameSite: sessionCookieSameSite,
+      secure: sessionCookieSecure,
+      maxAge: Number.isFinite(sessionCookieMaxAge) ? sessionCookieMaxAge : (1000 * 60 * 60 * 8)
     }
   }));
 
@@ -82,6 +102,15 @@ async function bootstrap() {
       return res.redirect("/domains");
     }
     return res.redirect("/login");
+  });
+
+  app.get("/healthz", async (req, res) => {
+    try {
+      await pool.query("SELECT 1");
+      return res.status(200).json({ status: "ok" });
+    } catch (err) {
+      return res.status(503).json({ status: "error", message: err.message });
+    }
   });
 
   app.use(createAuthRoutes({ pool, auditLog }));

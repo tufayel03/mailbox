@@ -37,7 +37,8 @@ sudo ./setup-mailserver.sh \
   --timezone UTC \
   --admin-email you@example.com \
   --acme auto \
-  --imap-starttls off
+  --imap-starttls off \
+  --install-panel-service on
 ```
 
 Optional flags:
@@ -51,6 +52,9 @@ sudo ./setup-mailserver.sh --hostname mail.mailhost.com --no-hostname-change
 
 # open IMAP STARTTLS 143 in addition to IMAPS 993
 sudo ./setup-mailserver.sh --hostname mail.mailhost.com --imap-starttls on
+
+# skip panel service installation
+sudo ./setup-mailserver.sh --hostname mail.mailhost.com --install-panel-service off
 ```
 
 What the setup script configures:
@@ -61,6 +65,16 @@ What the setup script configures:
 - Panel `.env` DB and host values
 
 ## 2) Panel Setup and Run
+
+Production (recommended):
+
+```bash
+cd /path/to/mail-platform/panel
+sudo systemctl status mail-platform-panel --no-pager
+curl -fsS http://127.0.0.1:3001/healthz
+```
+
+Manual mode (if service install skipped):
 
 ```bash
 cd /path/to/mail-platform/panel
@@ -78,7 +92,7 @@ Install and initialize:
 ```bash
 npm install
 npm run db:init
-npm run dev
+npm start
 ```
 
 Panel URL:
@@ -103,6 +117,12 @@ If login fails, re-run:
 ```bash
 cd /path/to/mail-platform/panel
 npm run db:init
+```
+
+If panel service generated admin password automatically, read:
+
+```bash
+sudo cat /root/mail-platform-admin-password.txt
 ```
 
 ## 4) Add Your First Domain
@@ -199,8 +219,8 @@ sudo ufw status verbose
 Start panel in production mode:
 
 ```bash
-cd /path/to/mail-platform/panel
-npm start
+sudo systemctl restart mail-platform-panel
+sudo journalctl -u mail-platform-panel -f
 ```
 
 ## 10) Troubleshooting
@@ -227,6 +247,7 @@ Mail send issues to Gmail:
 ## 11) Additional Docs
 
 - `docs/run-commands.md`
+- `docs/production-deploy.md`
 - `docs/first-domain-mailbox.md`
 - `docs/post-install-checklist.md`
 - `docs/gmail-setup.md`

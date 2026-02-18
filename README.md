@@ -10,17 +10,16 @@ This repository contains a private multi-domain email platform with a native Ubu
 
 - `mail-platform/README.md` (complete setup + operations guide)
 - `mail-platform/docs/run-commands.md`
+- `mail-platform/docs/production-deploy.md`
 
 ## Quick flow
 
 1. Install mail stack on Ubuntu:
    - `cd mail-platform`
-   - `sudo ./setup-mailserver.sh --hostname mail.mailhost.com --timezone UTC --admin-email you@example.com --acme auto`
+   - `sudo ./setup-mailserver.sh --hostname mail.mailhost.com --timezone UTC --admin-email you@example.com --acme auto --install-panel-service on`
 2. Start panel:
-   - `cd mail-platform/panel`
-   - `cp .env.example .env`
-   - set `SESSION_SECRET`, `DATABASE_URL`, `ADMIN_PASSWORD`
-   - `npm install && npm run db:init && npm run dev`
+   - `sudo systemctl status mail-platform-panel --no-pager`
+   - `curl -fsS http://127.0.0.1:3001/healthz`
 3. Login:
    - `http://127.0.0.1:3001/login`
 4. Add domain:

@@ -8,6 +8,7 @@ API_ALLOW_FROM="127.0.0.1,::1"
 ACME_MODE="auto"
 IMAP_STARTTLS="off"
 NO_HOSTNAME_CHANGE="false"
+INSTALL_PANEL_SERVICE="on"
 
 # Compatibility flags retained from old Docker flow; ignored in native mode.
 LEGACY_MAILCOW_DIR=""
@@ -49,6 +50,8 @@ Options:
   --acme <auto|skip>              Let's Encrypt mode (default: auto)
   --imap-starttls <on|off>        Enable IMAP STARTTLS (143) in addition to IMAPS 993 (default: off)
   --no-hostname-change            Do not modify system hostname
+  --install-panel-service <on|off>
+                                  Install and enable panel as systemd service (default: on)
   --db-name <name>                PostgreSQL DB name for panel + mail backend (default: mailpanel)
   --db-user <user>                PostgreSQL DB user (default: mailpanel)
   --db-pass <password>            PostgreSQL DB password (default: random generated)
@@ -73,6 +76,7 @@ parse_args() {
       --acme) ACME_MODE="$2"; shift 2 ;;
       --imap-starttls) IMAP_STARTTLS="$2"; shift 2 ;;
       --no-hostname-change) NO_HOSTNAME_CHANGE="true"; shift ;;
+      --install-panel-service) INSTALL_PANEL_SERVICE="$2"; shift 2 ;;
       --db-name) PANEL_DB_NAME="$2"; shift 2 ;;
       --db-user) PANEL_DB_USER="$2"; shift 2 ;;
       --db-pass) PANEL_DB_PASS="$2"; shift 2 ;;
@@ -87,6 +91,7 @@ parse_args() {
 
   [[ "$ACME_MODE" == "auto" || "$ACME_MODE" == "skip" ]] || die "--acme must be auto or skip"
   [[ "$IMAP_STARTTLS" == "on" || "$IMAP_STARTTLS" == "off" ]] || die "--imap-starttls must be on or off"
+  [[ "$INSTALL_PANEL_SERVICE" == "on" || "$INSTALL_PANEL_SERVICE" == "off" ]] || die "--install-panel-service must be on or off"
   [[ "$HOSTNAME_FQDN" == *.* ]] || die "--hostname must be a FQDN"
 }
 
@@ -109,6 +114,17 @@ random_secret() {
   openssl rand -base64 30 | tr -d '\n' | tr '/+' 'AZ'
 }
 
+set_env_value() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  if grep -qE "^${key}=" "$file"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+  else
+    printf '\n%s=%s\n' "$key" "$value" >>"$file"
+  fi
+}
+
 install_packages() {
   log "Installing required packages"
   export DEBIAN_FRONTEND=noninteractive
@@ -119,6 +135,7 @@ install_packages() {
 
   apt-get install -y \
     ca-certificates curl jq unzip \
+    sudo nodejs npm \
     ufw fail2ban chrony dnsutils netcat-openbsd \
     postgresql postgresql-contrib \
     postfix postfix-pgsql \
@@ -631,6 +648,7 @@ configure_panel_env() {
   local panel_dir="$SCRIPT_DIR/panel"
   local env_example="$panel_dir/.env.example"
   local env_file="$panel_dir/.env"
+  local generated_admin_password_file="/root/mail-platform-admin-password.txt"
 
   [[ -d "$panel_dir" ]] || return 0
 
@@ -639,16 +657,60 @@ configure_panel_env() {
   fi
 
   if [[ -f "$env_file" ]]; then
-    sed -i "s|^PANEL_HOST=.*|PANEL_HOST=$PANEL_BIND_HOST|" "$env_file" || true
-    sed -i "s|^PANEL_PORT=.*|PANEL_PORT=$PANEL_BIND_PORT|" "$env_file" || true
-    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgres://$PANEL_DB_USER:$PANEL_DB_PASS@$PANEL_DB_HOST:$PANEL_DB_PORT/$PANEL_DB_NAME|" "$env_file" || true
-    sed -i "s|^MAIL_HOSTNAME=.*|MAIL_HOSTNAME=$HOSTNAME_FQDN|" "$env_file" || true
-    sed -i "s|^MAIL_DB_URL=.*|MAIL_DB_URL=postgres://$PANEL_DB_USER:$PANEL_DB_PASS@$PANEL_DB_HOST:$PANEL_DB_PORT/$PANEL_DB_NAME|" "$env_file" || true
-    sed -i "s|^DKIM_SELECTOR=.*|DKIM_SELECTOR=$DKIM_SELECTOR|" "$env_file" || true
-    sed -i "s|^DKIM_KEYS_DIR=.*|DKIM_KEYS_DIR=$DKIM_KEY_DIR|" "$env_file" || true
-    sed -i "s|^DKIM_SELECTOR_MAP=.*|DKIM_SELECTOR_MAP=$DKIM_SELECTOR_MAP|" "$env_file" || true
-    sed -i "s|^RSPAMD_LOG_PATH=.*|RSPAMD_LOG_PATH=$RSPAMD_LOG_FILE|" "$env_file" || true
+    set_env_value "$env_file" "NODE_ENV" "production"
+    set_env_value "$env_file" "PANEL_HOST" "$PANEL_BIND_HOST"
+    set_env_value "$env_file" "PANEL_PORT" "$PANEL_BIND_PORT"
+    set_env_value "$env_file" "DATABASE_URL" "postgres://$PANEL_DB_USER:$PANEL_DB_PASS@$PANEL_DB_HOST:$PANEL_DB_PORT/$PANEL_DB_NAME"
+    set_env_value "$env_file" "ADMIN_USER" "admin"
+    set_env_value "$env_file" "MAIL_HOSTNAME" "$HOSTNAME_FQDN"
+    set_env_value "$env_file" "MAIL_DB_URL" "postgres://$PANEL_DB_USER:$PANEL_DB_PASS@$PANEL_DB_HOST:$PANEL_DB_PORT/$PANEL_DB_NAME"
+    set_env_value "$env_file" "DKIM_SELECTOR" "$DKIM_SELECTOR"
+    set_env_value "$env_file" "DKIM_KEYS_DIR" "$DKIM_KEY_DIR"
+    set_env_value "$env_file" "DKIM_SELECTOR_MAP" "$DKIM_SELECTOR_MAP"
+    set_env_value "$env_file" "RSPAMD_LOG_PATH" "$RSPAMD_LOG_FILE"
+    set_env_value "$env_file" "RSPAMD_RELOAD_CMD" "sudo -n /bin/systemctl reload rspamd"
+    set_env_value "$env_file" "SKIP_RSPAMD_RELOAD" "false"
+    set_env_value "$env_file" "TRUST_PROXY" "false"
+    set_env_value "$env_file" "SESSION_COOKIE_NAME" "mailpanel.sid"
+    set_env_value "$env_file" "SESSION_COOKIE_SECURE" "false"
+    set_env_value "$env_file" "SESSION_COOKIE_SAMESITE" "lax"
+    set_env_value "$env_file" "SESSION_COOKIE_MAX_AGE_MS" "28800000"
+    set_env_value "$env_file" "VIEW_CACHE" "true"
+    set_env_value "$env_file" "STATIC_MAX_AGE" "1h"
+
+    if ! grep -qE '^SESSION_SECRET=' "$env_file" || grep -qE '^SESSION_SECRET=(replace-with-long-random-secret|change-this-session-secret)?$' "$env_file"; then
+      set_env_value "$env_file" "SESSION_SECRET" "$(random_secret)"
+    fi
+
+    if ! grep -qE '^ADMIN_PASSWORD=' "$env_file" || grep -qE '^ADMIN_PASSWORD=(change-me-now)?$' "$env_file"; then
+      local generated_password
+      generated_password="$(random_secret | cut -c1-20)"
+      set_env_value "$env_file" "ADMIN_PASSWORD" "$generated_password"
+      umask 077
+      printf '%s\n' "$generated_password" >"$generated_admin_password_file"
+      log "Generated panel admin password and stored at $generated_admin_password_file"
+    fi
+
+    chown root:root "$env_file"
+    chmod 0600 "$env_file"
   fi
+}
+
+install_panel_service() {
+  if [[ "$INSTALL_PANEL_SERVICE" != "on" ]]; then
+    warn "Skipping panel systemd installation (--install-panel-service off)."
+    return
+  fi
+
+  local installer="$SCRIPT_DIR/panel/install-panel-service.sh"
+  if [[ ! -f "$installer" ]]; then
+    warn "Panel service installer missing: $installer"
+    return
+  fi
+
+  chmod +x "$installer"
+  log "Installing panel systemd service"
+  "$installer" --panel-dir "$SCRIPT_DIR/panel" --service-name "mail-platform-panel" --service-user "mailpanel" --service-group "mailpanel"
 }
 
 print_summary() {
@@ -662,12 +724,12 @@ Key outputs:
   TLS cert: $TLS_CERT_FILE
   DB URL: postgres://$PANEL_DB_USER:<redacted>@$PANEL_DB_HOST:$PANEL_DB_PORT/$PANEL_DB_NAME
   Panel bind: http://$PANEL_BIND_HOST:$PANEL_BIND_PORT
+  Panel service install: $INSTALL_PANEL_SERVICE
 
 Run panel:
-  cd $SCRIPT_DIR/panel
-  npm install
-  npm run db:init
-  npm start
+  systemctl status mail-platform-panel --no-pager
+  journalctl -u mail-platform-panel -f
+  curl -fsS http://127.0.0.1:$PANEL_BIND_PORT/healthz
 
 Recommended next checks:
   systemctl status postfix dovecot rspamd nginx --no-pager
@@ -680,6 +742,10 @@ Remember:
   - Publish SPF, DKIM, DMARC for each mailbox domain from panel output.
   - Keep panel access through SSH tunnel only.
 EOF
+
+  if [[ -f /root/mail-platform-admin-password.txt ]]; then
+    printf '  - Initial admin password file: /root/mail-platform-admin-password.txt\n'
+  fi
 }
 
 main() {
@@ -704,6 +770,7 @@ main() {
   reload_mail_services
   health_checks
   configure_panel_env
+  install_panel_service
   print_summary
 }
 

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "db:init": "node scripts/initDb.js"
+    "db:init": "node scripts/initDb.js",
+    "deploy:service": "bash ./install-panel-service.sh"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
