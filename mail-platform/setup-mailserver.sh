@@ -278,11 +278,7 @@ hosts = $PANEL_DB_HOST
 user = $PANEL_DB_USER
 password = $PANEL_DB_PASS
 dbname = $PANEL_DB_NAME
-query = (
-  SELECT destination FROM mail_aliases WHERE source='%s' AND active = true
-) UNION (
-  SELECT email FROM mail_users WHERE email='%s' AND active = true
-) LIMIT 1
+query = SELECT destination FROM mail_aliases WHERE source='%s' AND active = true UNION SELECT email FROM mail_users WHERE email='%s' AND active = true LIMIT 1
 EOF
 }
 
@@ -427,7 +423,7 @@ protocol lmtp {
 }
 
 protocol imap {
-  mail_plugins = \$mail_plugins imap_quota
+  mail_plugins = \$mail_plugins quota imap_quota
 }
 EOF
 
@@ -670,6 +666,9 @@ configure_panel_env() {
     set_env_value "$env_file" "RSPAMD_LOG_PATH" "$RSPAMD_LOG_FILE"
     set_env_value "$env_file" "RSPAMD_RELOAD_CMD" "sudo -n /bin/systemctl reload rspamd"
     set_env_value "$env_file" "SKIP_RSPAMD_RELOAD" "false"
+    set_env_value "$env_file" "RELAY_CONFIG_SCRIPT" "../configure-relayhost.sh"
+    set_env_value "$env_file" "RELAY_APPLY_CMD" "sudo -n"
+    set_env_value "$env_file" "RELAY_FLUSH_CMD" "sudo -n /usr/sbin/postqueue -f"
     set_env_value "$env_file" "TRUST_PROXY" "false"
     set_env_value "$env_file" "SESSION_COOKIE_NAME" "mailpanel.sid"
     set_env_value "$env_file" "SESSION_COOKIE_SECURE" "false"

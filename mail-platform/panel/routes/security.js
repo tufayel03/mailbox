@@ -1,5 +1,6 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
+const { loadRelaySettings, saveRelaySettings, applyRelaySettings } = require("../relayConfig");
 
 module.exports = function createSecurityRoutes({ pool, worker, auditLog }) {
   const router = express.Router();
@@ -19,18 +20,37 @@ module.exports = function createSecurityRoutes({ pool, worker, auditLog }) {
           ORDER BY updated_at DESC
           LIMIT 200`
       );
+      const relaySettings = await loadRelaySettings(pool);
 
       res.render("security", {
         pageTitle: "Security Events",
         events: eventsResult.rows,
-        mailboxStates: stateResult.rows
+        mailboxStates: stateResult.rows,
+        relaySettings: {
+          relay_host: relaySettings.relay_host || "",
+          relay_port: relaySettings.relay_port || 587,
+          relay_user: relaySettings.relay_user || "",
+          enabled: Boolean(relaySettings.enabled),
+          hasPassword: Boolean(relaySettings.relay_password),
+          updated_by: relaySettings.updated_by || "system",
+          updated_at: relaySettings.updated_at || null
+        }
       });
     } catch (err) {
       req.session.flash = { type: "error", message: `Failed to load security view: ${err.message}` };
       res.render("security", {
         pageTitle: "Security Events",
         events: [],
-        mailboxStates: []
+        mailboxStates: [],
+        relaySettings: {
+          relay_host: "",
+          relay_port: 587,
+          relay_user: "",
+          enabled: false,
+          hasPassword: false,
+          updated_by: "system",
+          updated_at: null
+        }
       });
     }
   });
@@ -117,6 +137,83 @@ module.exports = function createSecurityRoutes({ pool, worker, auditLog }) {
         }
       }
       req.session.flash = { type: "error", message: `Password update failed: ${err.message}` };
+      return res.redirect("/security/events");
+    }
+  });
+
+  router.post("/security/relay-settings", async (req, res) => {
+    const actor = req.session.user ? req.session.user.username : "unknown";
+    const relayHostInput = String(req.body.relayHost || "").trim().toLowerCase();
+    const relayPortInput = String(req.body.relayPort || "587").trim();
+    const relayUserInput = String(req.body.relayUser || "").trim();
+    const relayPasswordInput = String(req.body.relayPassword || "");
+    const relayEnabled = req.body.relayEnabled === "on";
+    const applyNow = req.body.applyNow === "on";
+
+    try {
+      const existing = await loadRelaySettings(pool);
+      const relayHost = relayHostInput || existing.relay_host || "";
+      const relayUser = relayUserInput || existing.relay_user || "";
+      const relayPassword = relayPasswordInput || existing.relay_password || "";
+
+      const saved = await saveRelaySettings(pool, {
+        relayHost,
+        relayPort: relayPortInput || existing.relay_port || 587,
+        relayUser,
+        relayPassword,
+        enabled: relayEnabled,
+        actor
+      });
+
+      if (typeof auditLog === "function") {
+        await auditLog(pool, actor, "relay_settings_update", "relay", saved.relay_host, "success", {
+          relayHost: saved.relay_host,
+          relayPort: saved.relay_port,
+          relayUser: saved.relay_user,
+          enabled: saved.enabled
+        });
+      }
+
+      if (applyNow && relayEnabled) {
+        const applyResult = await applyRelaySettings(saved);
+        if (typeof auditLog === "function") {
+          await auditLog(pool, actor, "relay_settings_apply", "relay", saved.relay_host, "success", {
+            relayHost: saved.relay_host,
+            relayPort: saved.relay_port,
+            relayUser: saved.relay_user,
+            output: applyResult.stdout ? applyResult.stdout.slice(0, 500) : ""
+          });
+        }
+        req.session.flash = { type: "success", message: "Relay settings saved and applied to Postfix." };
+      } else if (applyNow && !relayEnabled) {
+        req.session.flash = {
+          type: "success",
+          message: "Relay settings saved. Relay is disabled, so apply step was skipped."
+        };
+      } else {
+        req.session.flash = { type: "success", message: "Relay settings saved." };
+      }
+
+      return res.redirect("/security/events");
+    } catch (err) {
+      if (typeof auditLog === "function") {
+        try {
+          await auditLog(pool, actor, "relay_settings_update", "relay", relayHostInput || "unknown", "error", {
+            error: err.message,
+            relayPort: relayPortInput,
+            relayUser: relayUserInput,
+            enabled: relayEnabled,
+            applyNow
+          });
+        } catch (_) {
+          // Ignore audit failures in error path.
+        }
+      }
+      let message = `Relay settings failed: ${err.message}`;
+      if (/sudo: a password is required|not allowed to run sudo|permission denied/i.test(String(err.message || ""))) {
+        message += " Grant NOPASSWD sudo for configure-relayhost.sh and postqueue to the panel user.";
+      }
+      req.session.flash = { type: "error", message };
       return res.redirect("/security/events");
     }
   });

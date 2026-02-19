@@ -97,3 +97,14 @@ CREATE TABLE IF NOT EXISTS mail_aliases (
 CREATE INDEX IF NOT EXISTS idx_mail_domains_active ON mail_domains(active);
 CREATE INDEX IF NOT EXISTS idx_mail_users_domain ON mail_users(domain_name);
 CREATE INDEX IF NOT EXISTS idx_mail_users_active ON mail_users(active);
+
+CREATE TABLE IF NOT EXISTS smtp_relay_settings (
+  id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  relay_host TEXT NOT NULL DEFAULT '',
+  relay_port INTEGER NOT NULL DEFAULT 587,
+  relay_user TEXT NOT NULL DEFAULT '',
+  relay_pass_enc TEXT NOT NULL DEFAULT '',
+  enabled BOOLEAN NOT NULL DEFAULT false,
+  updated_by TEXT NOT NULL DEFAULT 'system',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

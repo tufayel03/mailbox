@@ -102,6 +102,43 @@
         </button>
       </form>
     </div>
+
+    <div class="panel-subcard" id="relay-settings">
+      <div class="card-head">
+        <div>
+          <h3 class="result-title">SMTP Relay Settings</h3>
+          <p class="result-note">Configure outbound relay (Namecheap Private Email / other provider) without manual CLI.</p>
+        </div>
+      </div>
+      <form method="post" action="/security/relay-settings" class="stacked-form">
+        <label>Relay Host
+          <input type="text" name="relayHost" placeholder="smtp.privateemail.com" value="<%= relaySettings ? relaySettings.relay_host : '' %>" required />
+        </label>
+        <label>Relay Port
+          <input type="number" name="relayPort" min="1" max="65535" value="<%= relaySettings ? relaySettings.relay_port : 587 %>" required />
+        </label>
+        <label>Relay Username
+          <input type="text" name="relayUser" placeholder="user@domain.com" value="<%= relaySettings ? relaySettings.relay_user : '' %>" required />
+        </label>
+        <label>Relay Password
+          <input type="password" name="relayPassword" placeholder="<%= relaySettings && relaySettings.hasPassword ? 'Saved (leave blank to keep existing)' : 'Enter relay SMTP password' %>" />
+        </label>
+        <label class="inline-check">
+          <input type="checkbox" name="relayEnabled" <%= relaySettings && relaySettings.enabled ? 'checked' : '' %> />
+          <span>Enable relay profile</span>
+        </label>
+        <label class="inline-check">
+          <input type="checkbox" name="applyNow" checked />
+          <span>Apply to Postfix now</span>
+        </label>
+        <% if (relaySettings && relaySettings.updated_at) { %>
+          <p class="result-note">Last updated by <%= relaySettings.updated_by %> at <%= new Date(relaySettings.updated_at).toISOString() %></p>
+        <% } %>
+        <button class="btn primary" type="submit">
+          <i data-lucide="send"></i><span>Save Relay Settings</span>
+        </button>
+      </form>
+    </div>
   </article>
 </section>
 
