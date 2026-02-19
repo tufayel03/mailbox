@@ -1,4 +1,5 @@
-const dns = require("dns").promises;
+const dns = require("dns");
+const dnsPromises = dns.promises;
 
 function generateDnsRecords(domain, mailHostname, dkimData, mailIpv4, mailIpv6, options = {}) {
   const records = [];
@@ -95,20 +96,40 @@ function spfExpectedSatisfied(expectedSpf, observedTxtValues) {
 }
 
 async function lookupRecord(record, domain) {
+  return lookupRecordWithResolver(record, domain, dnsPromises);
+}
+
+function buildResolver() {
+  const resolver = new dnsPromises.Resolver();
+  const raw = String(process.env.DNS_CHECK_SERVERS || "1.1.1.1,8.8.8.8");
+  const servers = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (servers.length > 0) {
+    resolver.setServers(servers);
+  }
+
+  return resolver;
+}
+
+async function lookupRecordWithResolver(record, domain, resolver) {
+  const client = resolver || dnsPromises;
   const fqdn = fqdnForRecord(record.name, domain);
 
   try {
     switch (record.type) {
       case "A": {
-        const values = await dns.resolve4(fqdn);
+        const values = await client.resolve4(fqdn);
         return { ok: values.includes(record.value), observed: values };
       }
       case "AAAA": {
-        const values = await dns.resolve6(fqdn);
+        const values = await client.resolve6(fqdn);
         return { ok: values.includes(record.value), observed: values };
       }
       case "MX": {
-        const values = await dns.resolveMx(fqdn);
+        const values = await client.resolveMx(fqdn);
         const ok = values.some(
           (mx) => mx.exchange.replace(/\.$/, "") === record.value.replace(/\.$/, "") && Number(mx.priority) === Number(record.priority)
         );
@@ -118,7 +139,7 @@ async function lookupRecord(record, domain) {
         };
       }
       case "TXT": {
-        const values = normalizeTxtValues(await dns.resolveTxt(fqdn));
+        const values = normalizeTxtValues(await client.resolveTxt(fqdn));
         const normalizedExpected = record.value.replace(/\s+/g, " ").trim();
         const isSpfRecord = normalizedExpected.toLowerCase().startsWith("v=spf1");
         const ok = isSpfRecord
@@ -127,7 +148,7 @@ async function lookupRecord(record, domain) {
         return { ok, observed: values };
       }
       case "CNAME": {
-        const values = await dns.resolveCname(fqdn);
+        const values = await client.resolveCname(fqdn);
         const ok = values.some((value) => value.replace(/\.$/, "") === record.value.replace(/\.$/, ""));
         return { ok, observed: values.map((value) => value.replace(/\.$/, "")) };
       }
@@ -140,11 +161,12 @@ async function lookupRecord(record, domain) {
 }
 
 async function checkDnsRecords(domain, records) {
+  const resolver = buildResolver();
   const checks = [];
 
   for (const record of records) {
     // eslint-disable-next-line no-await-in-loop
-    const result = await lookupRecord(record, domain);
+    const result = await lookupRecordWithResolver(record, domain, resolver);
     checks.push({
       ...record,
       pass: result.ok,
