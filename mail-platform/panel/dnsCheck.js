@@ -59,6 +59,37 @@ function normalizeTxtValues(values) {
   });
 }
 
+function normalizeSpfTokens(spfValue) {
+  return String(spfValue || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function spfExpectedSatisfied(expectedSpf, observedTxtValues) {
+  const expectedTokens = normalizeSpfTokens(expectedSpf);
+  if (expectedTokens.length === 0) {
+    return false;
+  }
+
+  const observedSpfValues = (Array.isArray(observedTxtValues) ? observedTxtValues : []).filter((value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .startsWith("v=spf1")
+  );
+
+  if (observedSpfValues.length === 0) {
+    return false;
+  }
+
+  return observedSpfValues.some((observedValue) => {
+    const observedTokens = normalizeSpfTokens(observedValue);
+    return expectedTokens.every((token) => observedTokens.includes(token));
+  });
+}
+
 async function lookupRecord(record, domain) {
   const fqdn = fqdnForRecord(record.name, domain);
 
@@ -85,7 +116,10 @@ async function lookupRecord(record, domain) {
       case "TXT": {
         const values = normalizeTxtValues(await dns.resolveTxt(fqdn));
         const normalizedExpected = record.value.replace(/\s+/g, " ").trim();
-        const ok = values.some((v) => v.replace(/\s+/g, " ").trim().includes(normalizedExpected));
+        const isSpfRecord = normalizedExpected.toLowerCase().startsWith("v=spf1");
+        const ok = isSpfRecord
+          ? spfExpectedSatisfied(normalizedExpected, values)
+          : values.some((v) => v.replace(/\s+/g, " ").trim().includes(normalizedExpected));
         return { ok, observed: values };
       }
       case "CNAME": {
