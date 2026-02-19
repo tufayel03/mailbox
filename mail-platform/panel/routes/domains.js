@@ -1,5 +1,6 @@
 const express = require("express");
 const { generateDnsRecords, checkDnsRecords } = require("../dnsCheck");
+const { loadRelaySettings } = require("../relayConfig");
 
 const DOMAIN_REGEX = /^(?=.{1,253}$)(?!-)([A-Za-z0-9-]{1,63}\.)+[A-Za-z]{2,63}$/;
 
@@ -13,14 +14,34 @@ function parseDkimPayload(payload) {
 module.exports = function createDomainRoutes({ pool, mailServerApi, auditLog, env }) {
   const router = express.Router();
 
+  async function resolveSpfValue() {
+    if (typeof process.env.MAIL_SPF_VALUE === "string" && process.env.MAIL_SPF_VALUE.trim()) {
+      return process.env.MAIL_SPF_VALUE.trim();
+    }
+
+    try {
+      const relay = await loadRelaySettings(pool);
+      const relayHost = String(relay.relay_host || "").toLowerCase();
+      if (relay.enabled && relayHost.endsWith("privateemail.com")) {
+        return "v=spf1 mx include:spf.privateemail.com -all";
+      }
+    } catch (_) {
+      // Fallback to default SPF template when relay settings are unavailable.
+    }
+
+    return "v=spf1 mx -all";
+  }
+
   async function buildDnsPreview(domain) {
     const dkimPayload = parseDkimPayload(await mailServerApi.getDkim(domain));
+    const spfValue = await resolveSpfValue();
     const records = generateDnsRecords(
       domain,
       env.mailHostname,
       dkimPayload,
       env.mailServerIpv4,
-      env.mailServerIpv6
+      env.mailServerIpv6,
+      { spfValue }
     );
 
     return {
@@ -214,12 +235,14 @@ module.exports = function createDomainRoutes({ pool, mailServerApi, auditLog, en
 
     try {
       const dkimPayload = parseDkimPayload(await mailServerApi.getDkim(domain));
+      const spfValue = await resolveSpfValue();
       const records = generateDnsRecords(
         domain,
         env.mailHostname,
         dkimPayload,
         env.mailServerIpv4,
-        env.mailServerIpv6
+        env.mailServerIpv6,
+        { spfValue }
       );
 
       const results = await checkDnsRecords(domain, records);

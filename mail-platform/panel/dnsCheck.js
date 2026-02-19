@@ -1,7 +1,11 @@
 const dns = require("dns").promises;
 
-function generateDnsRecords(domain, mailHostname, dkimData, mailIpv4, mailIpv6) {
+function generateDnsRecords(domain, mailHostname, dkimData, mailIpv4, mailIpv6, options = {}) {
   const records = [];
+  const spfValue =
+    typeof options.spfValue === "string" && options.spfValue.trim()
+      ? options.spfValue.trim()
+      : "v=spf1 mx -all";
 
   if (mailIpv4) {
     records.push({ type: "A", name: "mail", value: mailIpv4 });
@@ -12,7 +16,7 @@ function generateDnsRecords(domain, mailHostname, dkimData, mailIpv4, mailIpv6) 
   }
 
   records.push({ type: "MX", name: "@", value: mailHostname, priority: 10 });
-  records.push({ type: "TXT", name: "@", value: "v=spf1 mx -all" });
+  records.push({ type: "TXT", name: "@", value: spfValue });
 
   if (dkimData && dkimData.dkim_selector && dkimData.dkim_txt) {
     records.push({
