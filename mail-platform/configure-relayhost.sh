@@ -104,6 +104,11 @@ main() {
     postconf -e "inet_protocols = ipv4"
   fi
 
+  # Keep sender identity as the real authenticated mailbox. Do not force
+  # envelope rewrites to the relay account user.
+  postconf -X "sender_canonical_classes" || true
+  postconf -X "sender_canonical_maps" || true
+
   log "Restarting Postfix"
   postfix check
   systemctl restart postfix
@@ -114,6 +119,8 @@ Relayhost configured successfully.
 
 Active relayhost:
   $(postconf -h relayhost)
+Active sender rewrite:
+  $(postconf -h sender_canonical_maps 2>/dev/null || true)
 
 Next:
   sudo postqueue -f
