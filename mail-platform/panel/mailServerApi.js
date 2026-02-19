@@ -33,8 +33,12 @@ class MailServerApi {
       (process.env.SKIP_RSPAMD_RELOAD || (process.platform === "win32" ? "true" : "false")).toLowerCase() === "true";
 
     const defaultStorageBase =
-      process.platform === "win32" ? path.join(defaultRuntimeDir, "mailstore") : "/var/vmail";
+      process.platform === "win32" ? path.join(defaultRuntimeDir, "mailstore") : "/var/mail/vhosts";
     this.mailStorageBase = process.env.MAIL_STORAGE_BASE || defaultStorageBase;
+    this.mailStorageBases =
+      process.platform === "win32"
+        ? [this.mailStorageBase]
+        : Array.from(new Set([this.mailStorageBase, "/var/mail/vhosts", "/var/vmail"]));
     this.mailboxStatsCmd = process.env.MAILBOX_STATS_CMD || "";
     this.mailboxPurgeCmd = process.env.MAILBOX_PURGE_CMD || "";
     this.mailboxStatsTimeoutMs = parseInt(process.env.MAILBOX_STATS_TIMEOUT_MS || "15000", 10);
@@ -221,12 +225,13 @@ class MailServerApi {
   }
 
   resolveMailboxRootPath(identity) {
-    const candidates = [
-      path.join(this.mailStorageBase, identity.domain, identity.localPart, "Maildir"),
-      path.join(this.mailStorageBase, identity.domain, identity.localPart),
-      path.join(this.mailStorageBase, identity.email, "Maildir"),
-      path.join(this.mailStorageBase, identity.email)
-    ];
+    const candidates = [];
+    for (const baseDir of this.mailStorageBases) {
+      candidates.push(path.join(baseDir, identity.domain, identity.localPart, "Maildir"));
+      candidates.push(path.join(baseDir, identity.domain, identity.localPart));
+      candidates.push(path.join(baseDir, identity.email, "Maildir"));
+      candidates.push(path.join(baseDir, identity.email));
+    }
 
     for (const candidate of candidates) {
       try {
@@ -281,7 +286,9 @@ class MailServerApi {
 
   collectMailboxStatsFromFilesystem(mailboxRoot) {
     if (!fs.existsSync(mailboxRoot)) {
-      throw new Error(`Mailbox storage path not found: ${mailboxRoot}`);
+      throw new Error(
+        `Mailbox storage path not found: ${mailboxRoot}. Set MAIL_STORAGE_BASE or MAILBOX_STATS_CMD in panel .env`
+      );
     }
 
     const inboxCur = path.join(mailboxRoot, "cur");
@@ -349,7 +356,9 @@ class MailServerApi {
 
   purgeMailboxStorageFromFilesystem(mailboxRoot) {
     if (!fs.existsSync(mailboxRoot)) {
-      throw new Error(`Mailbox storage path not found: ${mailboxRoot}`);
+      throw new Error(
+        `Mailbox storage path not found: ${mailboxRoot}. Set MAIL_STORAGE_BASE or MAILBOX_PURGE_CMD in panel .env`
+      );
     }
 
     const stack = [mailboxRoot];
