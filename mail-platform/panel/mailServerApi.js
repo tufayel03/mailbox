@@ -31,6 +31,14 @@ class MailServerApi {
     this.rspamdReloadCmd = process.env.RSPAMD_RELOAD_CMD || "systemctl reload rspamd";
     this.skipRspamdReload =
       (process.env.SKIP_RSPAMD_RELOAD || (process.platform === "win32" ? "true" : "false")).toLowerCase() === "true";
+
+    const defaultStorageBase =
+      process.platform === "win32" ? path.join(defaultRuntimeDir, "mailstore") : "/var/vmail";
+    this.mailStorageBase = process.env.MAIL_STORAGE_BASE || defaultStorageBase;
+    this.mailboxStatsCmd = process.env.MAILBOX_STATS_CMD || "";
+    this.mailboxPurgeCmd = process.env.MAILBOX_PURGE_CMD || "";
+    this.mailboxStatsTimeoutMs = parseInt(process.env.MAILBOX_STATS_TIMEOUT_MS || "15000", 10);
+    this.mailboxPurgeTimeoutMs = parseInt(process.env.MAILBOX_PURGE_TIMEOUT_MS || "30000", 10);
   }
 
   async discover() {
@@ -103,17 +111,21 @@ class MailServerApi {
     return run.stdout || "";
   }
 
-  runShellCommand(shellCommand, errorContext) {
-    let run = spawnSync("bash", ["-lc", shellCommand], { encoding: "utf8" });
+  runShellCommand(shellCommand, errorContext, options = {}) {
+    const timeoutMs =
+      Number.isFinite(Number(options.timeoutMs)) && Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : undefined;
+    let run = spawnSync("bash", ["-lc", shellCommand], { encoding: "utf8", timeout: timeoutMs });
 
     if (run.error && run.error.code === "ENOENT") {
-      run = spawnSync("sh", ["-lc", shellCommand], { encoding: "utf8" });
+      run = spawnSync("sh", ["-lc", shellCommand], { encoding: "utf8", timeout: timeoutMs });
     }
 
     if (run.error || run.status !== 0) {
       const detail = (run.stderr || run.stdout || run.error?.message || "unknown error").trim();
       throw new Error(`${errorContext}: ${detail}`);
     }
+
+    return run.stdout || "";
   }
 
   ensureDkimKey(domain, selector) {
@@ -188,6 +200,291 @@ class MailServerApi {
     } catch (err) {
       throw new Error(`${err.message}. Ensure panel user can reload rspamd.`);
     }
+  }
+
+  parseMailboxIdentity(emailInput) {
+    const email = String(emailInput || "").trim().toLowerCase();
+    if (!EMAIL_REGEX.test(email)) {
+      throw new Error("Invalid email");
+    }
+
+    const [localPart, domain] = email.split("@");
+    if (!localPart || !domain) {
+      throw new Error("Invalid mailbox identity");
+    }
+
+    return { email, localPart, domain };
+  }
+
+  shellQuote(input) {
+    return `'${String(input).replace(/'/g, `'\\''`)}'`;
+  }
+
+  resolveMailboxRootPath(identity) {
+    const candidates = [
+      path.join(this.mailStorageBase, identity.domain, identity.localPart, "Maildir"),
+      path.join(this.mailStorageBase, identity.domain, identity.localPart),
+      path.join(this.mailStorageBase, identity.email, "Maildir"),
+      path.join(this.mailStorageBase, identity.email)
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+          return candidate;
+        }
+      } catch (_) {
+        // Keep probing candidates.
+      }
+    }
+
+    return candidates[0];
+  }
+
+  applyMailboxCommandTemplate(template, identity, mailboxRoot) {
+    return String(template)
+      .replaceAll("{{EMAIL}}", this.shellQuote(identity.email))
+      .replaceAll("{{DOMAIN}}", this.shellQuote(identity.domain))
+      .replaceAll("{{LOCAL_PART}}", this.shellQuote(identity.localPart))
+      .replaceAll("{{MAILDIR}}", this.shellQuote(mailboxRoot));
+  }
+
+  parseMailboxStatsOutput(rawOutput, mailboxRoot) {
+    const lines = String(rawOutput || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (lines.length === 0) {
+      throw new Error("Mailbox stats command returned no output");
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(lines[lines.length - 1]);
+    } catch (err) {
+      throw new Error("Mailbox stats command did not return valid JSON");
+    }
+
+    if (!parsed || typeof parsed !== "object" || parsed.ok === false) {
+      throw new Error(parsed?.error || "Mailbox stats command reported failure");
+    }
+
+    return {
+      usedBytes: Number.isFinite(Number(parsed.usedBytes)) ? Number(parsed.usedBytes) : null,
+      inboxCount: Number.isFinite(Number(parsed.inboxCount)) ? Number(parsed.inboxCount) : null,
+      sentCount: Number.isFinite(Number(parsed.sentCount)) ? Number(parsed.sentCount) : null,
+      mailboxPath: parsed.path || mailboxRoot,
+      source: "command"
+    };
+  }
+
+  collectMailboxStatsFromFilesystem(mailboxRoot) {
+    if (!fs.existsSync(mailboxRoot)) {
+      throw new Error(`Mailbox storage path not found: ${mailboxRoot}`);
+    }
+
+    const inboxCur = path.join(mailboxRoot, "cur");
+    const inboxNew = path.join(mailboxRoot, "new");
+
+    const stack = [mailboxRoot];
+    let usedBytes = 0;
+    let inboxCount = 0;
+    let sentCount = 0;
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      let entries = [];
+      try {
+        entries = fs.readdirSync(current, { withFileTypes: true });
+      } catch (err) {
+        if (err?.code === "EACCES") {
+          throw new Error(`Permission denied reading mailbox path: ${current}`);
+        }
+        throw err;
+      }
+
+      for (const entry of entries) {
+        const fullPath = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(fullPath);
+          continue;
+        }
+        if (!entry.isFile()) {
+          continue;
+        }
+
+        let fileSize = 0;
+        try {
+          fileSize = fs.statSync(fullPath).size;
+        } catch (err) {
+          if (err?.code === "EACCES") {
+            throw new Error(`Permission denied reading mailbox file: ${fullPath}`);
+          }
+          throw err;
+        }
+        usedBytes += fileSize;
+
+        const parentDir = path.dirname(fullPath);
+        if (parentDir === inboxCur || parentDir === inboxNew) {
+          inboxCount += 1;
+          continue;
+        }
+
+        const folderName = path.basename(path.dirname(parentDir)).toLowerCase();
+        if (folderName.includes("sent")) {
+          sentCount += 1;
+        }
+      }
+    }
+
+    return {
+      usedBytes,
+      inboxCount,
+      sentCount,
+      mailboxPath: mailboxRoot,
+      source: "filesystem"
+    };
+  }
+
+  purgeMailboxStorageFromFilesystem(mailboxRoot) {
+    if (!fs.existsSync(mailboxRoot)) {
+      throw new Error(`Mailbox storage path not found: ${mailboxRoot}`);
+    }
+
+    const stack = [mailboxRoot];
+    const messageDirs = [];
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      let entries = [];
+      try {
+        entries = fs.readdirSync(current, { withFileTypes: true });
+      } catch (err) {
+        if (err?.code === "EACCES") {
+          throw new Error(`Permission denied reading mailbox path: ${current}`);
+        }
+        throw err;
+      }
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+        const next = path.join(current, entry.name);
+        const lowerName = entry.name.toLowerCase();
+        if (lowerName === "cur" || lowerName === "new") {
+          messageDirs.push(next);
+        }
+        stack.push(next);
+      }
+    }
+
+    let deletedFiles = 0;
+    let deletedBytes = 0;
+
+    for (const dirPath of messageDirs) {
+      let entries = [];
+      try {
+        entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      } catch (err) {
+        if (err?.code === "EACCES") {
+          throw new Error(`Permission denied reading mailbox folder: ${dirPath}`);
+        }
+        throw err;
+      }
+
+      for (const entry of entries) {
+        if (!entry.isFile()) {
+          continue;
+        }
+        const filePath = path.join(dirPath, entry.name);
+        try {
+          deletedBytes += fs.statSync(filePath).size;
+          fs.unlinkSync(filePath);
+          deletedFiles += 1;
+        } catch (err) {
+          if (err?.code === "EACCES") {
+            throw new Error(`Permission denied deleting mailbox file: ${filePath}`);
+          }
+          throw err;
+        }
+      }
+    }
+
+    return {
+      deletedFiles,
+      deletedBytes,
+      mailboxPath: mailboxRoot,
+      source: "filesystem"
+    };
+  }
+
+  async getMailboxStats(emailInput) {
+    this.assertReady();
+    const identity = this.parseMailboxIdentity(emailInput);
+    const mailboxRoot = this.resolveMailboxRootPath(identity);
+
+    if (this.mailboxStatsCmd) {
+      const command = this.applyMailboxCommandTemplate(this.mailboxStatsCmd, identity, mailboxRoot);
+      const output = this.runShellCommand(command, "Failed collecting mailbox stats", {
+        timeoutMs: this.mailboxStatsTimeoutMs
+      });
+      return this.parseMailboxStatsOutput(output, mailboxRoot);
+    }
+
+    return this.collectMailboxStatsFromFilesystem(mailboxRoot);
+  }
+
+  async purgeMailboxStorage(emailInput) {
+    this.assertReady();
+    const identity = this.parseMailboxIdentity(emailInput);
+    const mailboxRoot = this.resolveMailboxRootPath(identity);
+
+    if (this.mailboxPurgeCmd) {
+      const command = this.applyMailboxCommandTemplate(this.mailboxPurgeCmd, identity, mailboxRoot);
+      const output = this.runShellCommand(command, "Failed purging mailbox storage", {
+        timeoutMs: this.mailboxPurgeTimeoutMs
+      });
+
+      if (output.trim().length === 0) {
+        return {
+          deletedFiles: null,
+          deletedBytes: null,
+          mailboxPath: mailboxRoot,
+          source: "command"
+        };
+      }
+
+      const lines = output
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      let parsed;
+      try {
+        parsed = JSON.parse(lines[lines.length - 1]);
+      } catch (err) {
+        return {
+          deletedFiles: null,
+          deletedBytes: null,
+          mailboxPath: mailboxRoot,
+          source: "command"
+        };
+      }
+
+      if (parsed?.ok === false) {
+        throw new Error(parsed.error || "Mailbox purge command reported failure");
+      }
+
+      return {
+        deletedFiles: Number.isFinite(Number(parsed.deletedFiles)) ? Number(parsed.deletedFiles) : null,
+        deletedBytes: Number.isFinite(Number(parsed.deletedBytes)) ? Number(parsed.deletedBytes) : null,
+        mailboxPath: parsed.path || mailboxRoot,
+        source: "command"
+      };
+    }
+
+    return this.purgeMailboxStorageFromFilesystem(mailboxRoot);
   }
 
   async listDomains() {

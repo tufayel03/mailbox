@@ -4,6 +4,22 @@
   const mailboxRows = Array.isArray(mailboxes) ? mailboxes : [];
   const enabledCount = mailboxRows.filter((item) => String(item.active) === '1').length;
   const warnedCount = mailboxRows.filter((item) => item.localState && item.localState.status === 'warning').length;
+  const formatBytes = (bytes) => {
+    const size = Number(bytes);
+    if (!Number.isFinite(size) || size < 0) {
+      return '-';
+    }
+    if (size < 1024) {
+      return `${size} B`;
+    }
+    if (size < 1024 * 1024) {
+      return `${Math.round(size / 1024)} KB`;
+    }
+    if (size < 1024 * 1024 * 1024) {
+      return `${Math.round(size / 1024 / 1024)} MB`;
+    }
+    return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  };
 %>
 
 <section class="panel-grid mailboxes-grid">
@@ -50,24 +66,33 @@
             <th>Email</th>
             <th>Name</th>
             <th>Quota</th>
+            <th>Storage</th>
+            <th>Inbox</th>
+            <th>Sent</th>
             <th>State</th>
             <th class="actions-col">Actions</th>
           </tr>
         </thead>
         <tbody>
           <% if (mailboxRows.length === 0) { %>
-            <tr><td colspan="5">No mailboxes found.</td></tr>
+            <tr><td colspan="8">No mailboxes found.</td></tr>
           <% } %>
           <% mailboxRows.forEach((mailbox) => { %>
             <tr>
               <td><%= mailbox.username %></td>
               <td><%= mailbox.name %></td>
               <td><%= Math.round((mailbox.quota || 0) / 1024 / 1024) %> MB</td>
+              <td><%= formatBytes(mailbox.mailboxStats && mailbox.mailboxStats.usedBytes) %></td>
+              <td><%= Number.isFinite(Number(mailbox.mailboxStats && mailbox.mailboxStats.inboxCount)) ? mailbox.mailboxStats.inboxCount : '-' %></td>
+              <td><%= Number.isFinite(Number(mailbox.mailboxStats && mailbox.mailboxStats.sentCount)) ? mailbox.mailboxStats.sentCount : '-' %></td>
               <td>
                 <% if (mailbox.localState) { %>
                   <%= mailbox.localState.status %> (warns: <%= mailbox.localState.warn_count %>)
                 <% } else { %>
                   active
+                <% } %>
+                <% if (mailbox.mailboxStats && mailbox.mailboxStats.error) { %>
+                  <div class="help-text text-danger"><%= mailbox.mailboxStats.error %></div>
                 <% } %>
               </td>
               <td class="actions-col">
@@ -85,7 +110,7 @@
               </td>
             </tr>
             <tr>
-              <td colspan="5">
+              <td colspan="8">
                 <div class="action-row mailbox-edit-row">
                   <form method="post" action="/mailboxes/<%= encodeURIComponent(mailbox.username) %>/quota" class="inline-form">
                     <label>Quota MB <input type="number" name="quotaMb" min="1" required /></label>
@@ -94,6 +119,11 @@
                   <form method="post" action="/mailboxes/<%= encodeURIComponent(mailbox.username) %>/password" class="inline-form">
                     <label>New Password <input type="password" name="newPassword" minlength="8" required /></label>
                     <button class="btn mini" type="submit"><i data-lucide="key-round"></i><span>Reset Password</span></button>
+                  </form>
+                  <form method="post" action="/mailboxes/<%= encodeURIComponent(mailbox.username) %>/purge-storage" class="inline-form" onsubmit="return confirm('Delete all stored messages for <%= mailbox.username %>? This cannot be undone.');">
+                    <input type="hidden" name="selectedDomain" value="<%= selectedDomain %>" />
+                    <label>Type DELETE <input type="text" name="confirmText" minlength="6" maxlength="6" pattern="DELETE" required /></label>
+                    <button class="btn mini danger" type="submit"><i data-lucide="trash"></i><span>Purge Storage</span></button>
                   </form>
                 </div>
               </td>
