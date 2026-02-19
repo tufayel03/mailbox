@@ -286,9 +286,13 @@ class MailServerApi {
 
   collectMailboxStatsFromFilesystem(mailboxRoot) {
     if (!fs.existsSync(mailboxRoot)) {
-      throw new Error(
-        `Mailbox storage path not found: ${mailboxRoot}. Set MAIL_STORAGE_BASE or MAILBOX_STATS_CMD in panel .env`
-      );
+      return {
+        usedBytes: 0,
+        inboxCount: 0,
+        sentCount: 0,
+        mailboxPath: mailboxRoot,
+        source: "filesystem"
+      };
     }
 
     const inboxCur = path.join(mailboxRoot, "cur");
@@ -356,9 +360,12 @@ class MailServerApi {
 
   purgeMailboxStorageFromFilesystem(mailboxRoot) {
     if (!fs.existsSync(mailboxRoot)) {
-      throw new Error(
-        `Mailbox storage path not found: ${mailboxRoot}. Set MAIL_STORAGE_BASE or MAILBOX_PURGE_CMD in panel .env`
-      );
+      return {
+        deletedFiles: 0,
+        deletedBytes: 0,
+        mailboxPath: mailboxRoot,
+        source: "filesystem"
+      };
     }
 
     const stack = [mailboxRoot];

@@ -51,7 +51,12 @@ if [[ -d "$HOME_DIR/Maildir" ]]; then
   MAILDIR="$HOME_DIR/Maildir"
 fi
 
-[[ -d "$MAILDIR" ]] || fail "Mailbox path does not exist: $MAILDIR"
+if [[ ! -d "$MAILDIR" ]]; then
+  # If storage is not created yet, purge is a no-op.
+  printf '{"ok":true,"deletedFiles":0,"deletedBytes":0,"path":"%s","maildirExists":false}\n' \
+    "$(json_escape "$MAILDIR")"
+  exit 0
+fi
 
 DELETED_FILES=0
 DELETED_BYTES=0

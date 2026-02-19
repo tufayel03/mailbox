@@ -51,7 +51,12 @@ if [[ -d "$HOME_DIR/Maildir" ]]; then
   MAILDIR="$HOME_DIR/Maildir"
 fi
 
-[[ -d "$MAILDIR" ]] || fail "Mailbox path does not exist: $MAILDIR"
+if [[ ! -d "$MAILDIR" ]]; then
+  # New mailboxes may not have materialized on disk yet.
+  printf '{"ok":true,"usedBytes":0,"inboxCount":0,"sentCount":0,"path":"%s","maildirExists":false}\n' \
+    "$(json_escape "$MAILDIR")"
+  exit 0
+fi
 
 USED_BYTES="$(du -sb "$MAILDIR" 2>/dev/null | awk '{print $1}' | head -n1)"
 if [[ -z "$USED_BYTES" ]]; then
