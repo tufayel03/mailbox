@@ -664,6 +664,7 @@ configure_panel_env() {
     set_env_value "$env_file" "DKIM_KEYS_DIR" "$DKIM_KEY_DIR"
     set_env_value "$env_file" "DKIM_SELECTOR_MAP" "$DKIM_SELECTOR_MAP"
     set_env_value "$env_file" "RSPAMD_LOG_PATH" "$RSPAMD_LOG_FILE"
+    set_env_value "$env_file" "DNS_CHECK_SERVERS" "1.1.1.1,8.8.8.8"
     set_env_value "$env_file" "RSPAMD_RELOAD_CMD" "sudo -n /bin/systemctl reload rspamd"
     set_env_value "$env_file" "SKIP_RSPAMD_RELOAD" "false"
     set_env_value "$env_file" "MAIL_STORAGE_BASE" "$MAILBOX_BASE_DIR"
