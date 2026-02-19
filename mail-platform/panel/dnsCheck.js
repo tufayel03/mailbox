@@ -1,19 +1,41 @@
 const dns = require("dns");
 const dnsPromises = dns.promises;
 
+function dnsLabelForHostWithinDomain(mailHostname, domain) {
+  const host = String(mailHostname || "").trim().replace(/\.$/, "").toLowerCase();
+  const zone = String(domain || "").trim().replace(/\.$/, "").toLowerCase();
+
+  if (!host || !zone) {
+    return null;
+  }
+
+  if (host === zone) {
+    return "@";
+  }
+
+  const suffix = `.${zone}`;
+  if (!host.endsWith(suffix)) {
+    return null;
+  }
+
+  const label = host.slice(0, -suffix.length);
+  return label || "@";
+}
+
 function generateDnsRecords(domain, mailHostname, dkimData, mailIpv4, mailIpv6, options = {}) {
   const records = [];
+  const mailHostLabel = dnsLabelForHostWithinDomain(mailHostname, domain);
   const spfValue =
     typeof options.spfValue === "string" && options.spfValue.trim()
       ? options.spfValue.trim()
       : "v=spf1 mx -all";
 
-  if (mailIpv4) {
-    records.push({ type: "A", name: "mail", value: mailIpv4 });
+  if (mailIpv4 && mailHostLabel) {
+    records.push({ type: "A", name: mailHostLabel, value: mailIpv4 });
   }
 
-  if (mailIpv6) {
-    records.push({ type: "AAAA", name: "mail", value: mailIpv6 });
+  if (mailIpv6 && mailHostLabel) {
+    records.push({ type: "AAAA", name: mailHostLabel, value: mailIpv6 });
   }
 
   records.push({ type: "MX", name: "@", value: mailHostname, priority: 10 });

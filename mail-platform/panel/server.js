@@ -125,6 +125,7 @@ async function bootstrap() {
     auditLog,
     env: {
       mailHostname: process.env.MAIL_HOSTNAME || "mail.mailhost.com",
+      mailHostnameTemplate: process.env.MAIL_HOSTNAME_TEMPLATE || "",
       mailServerIpv4: process.env.MAIL_SERVER_IPV4 || "",
       mailServerIpv6: process.env.MAIL_SERVER_IPV6 || ""
     }

@@ -14,6 +14,25 @@ function parseDkimPayload(payload) {
 module.exports = function createDomainRoutes({ pool, mailServerApi, auditLog, env }) {
   const router = express.Router();
 
+  function resolveMailHostnameForDomain(domain) {
+    const fallback = String(env.mailHostname || "mail.mailhost.com").trim().toLowerCase();
+    const template = String(env.mailHostnameTemplate || "").trim().toLowerCase();
+
+    if (!template) {
+      return fallback;
+    }
+
+    if (template.includes("{{domain}}")) {
+      return template.replace(/\{\{domain\}\}/g, domain).replace(/\.$/, "");
+    }
+
+    if (template.includes("{domain}")) {
+      return template.replace(/\{domain\}/g, domain).replace(/\.$/, "");
+    }
+
+    return template.replace(/\.$/, "");
+  }
+
   async function resolveSpfValue() {
     if (typeof process.env.MAIL_SPF_VALUE === "string" && process.env.MAIL_SPF_VALUE.trim()) {
       return process.env.MAIL_SPF_VALUE.trim();
@@ -35,9 +54,10 @@ module.exports = function createDomainRoutes({ pool, mailServerApi, auditLog, en
   async function buildDnsPreview(domain) {
     const dkimPayload = parseDkimPayload(await mailServerApi.getDkim(domain));
     const spfValue = await resolveSpfValue();
+    const mailHostname = resolveMailHostnameForDomain(domain);
     const records = generateDnsRecords(
       domain,
-      env.mailHostname,
+      mailHostname,
       dkimPayload,
       env.mailServerIpv4,
       env.mailServerIpv6,
@@ -236,9 +256,10 @@ module.exports = function createDomainRoutes({ pool, mailServerApi, auditLog, en
     try {
       const dkimPayload = parseDkimPayload(await mailServerApi.getDkim(domain));
       const spfValue = await resolveSpfValue();
+      const mailHostname = resolveMailHostnameForDomain(domain);
       const records = generateDnsRecords(
         domain,
-        env.mailHostname,
+        mailHostname,
         dkimPayload,
         env.mailServerIpv4,
         env.mailServerIpv6,
